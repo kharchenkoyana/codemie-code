@@ -435,7 +435,7 @@ describe('ConfigLoader - cross-env URL gate', () => {
     });
   });
 
-  describe('load with --profile cross-env', () => {
+  describe('load with selected global and local team profiles', () => {
     // ConfigLoader.GLOBAL_CONFIG and .GLOBAL_CONFIG_DIR are static class fields
     // evaluated at module load time, so vi.spyOn(paths, ...) in beforeEach is
     // too late to redirect them. Save the originals and override the statics
@@ -497,6 +497,43 @@ describe('ConfigLoader - cross-env URL gate', () => {
       await fs.writeFile(LOCAL_CONFIG_PATH, JSON.stringify(config, null, 2));
     }
 
+    it('keeps a globally defined profile selected by local activeProfile when --profile is omitted', async () => {
+      await writeGlobal('global-default', {
+        'global-default': {
+          provider: 'ai-run-sso',
+          codeMieUrl: 'https://prod.example.com',
+          codeMieProject: 'global-default-project',
+          baseUrl: 'https://prod.example.com/code-assistant-api',
+          model: 'global-default-model',
+          name: 'global-default'
+        },
+        'selected-profile': {
+          provider: 'ai-run-sso',
+          codeMieUrl: 'https://prod.example.com',
+          codeMieProject: 'selected-project',
+          baseUrl: 'https://prod.example.com/code-assistant-api',
+          model: 'selected-model',
+          name: 'selected-profile'
+        }
+      });
+      await writeLocal('selected-profile', {
+        'local-team-profile': {
+          provider: 'ai-run-sso',
+          codeMieUrl: 'https://prod.example.com',
+          codeMieProject: 'local-team-project',
+          baseUrl: 'https://prod.example.com/code-assistant-api',
+          model: 'local-team-model',
+          name: 'local-team-profile'
+        }
+      });
+
+      const cfg = await ConfigLoader.load(path.join(TEST_DIR, 'project'));
+
+      expect(cfg.name).toBe('selected-profile');
+      expect(cfg.model).toBe('selected-model');
+      expect(cfg.codeMieProject).toBe('selected-project');
+    });
+
     it('drops project context when --profile targets a different CodeMie URL', async () => {
       await writeGlobal('preview', {
         preview: {
@@ -553,6 +590,37 @@ describe('ConfigLoader - cross-env URL gate', () => {
       expect(cfg.codeMieUrl).toBe('https://prod.example.com');
       expect(cfg.codeMieProject).toBe('prod-proj');
       expect(cfg.codeMieIntegration).toBe('prod-int');
+    });
+
+    it('keeps project context explicitly defined by the selected profile', async () => {
+      await writeGlobal('personal-anthropic', {
+        'personal-anthropic': {
+          provider: 'anthropic-subscription',
+          codeMieUrl: 'https://prod.example.com',
+          codeMieProject: 'personal-proj',
+          codeMieIntegration: 'personal-int' as unknown as CodeMieIntegrationInfo,
+          baseUrl: 'https://api.anthropic.com',
+          model: 'claude-sonnet-4-6',
+          name: 'personal-anthropic'
+        }
+      });
+      await writeLocal('team-prod', {
+        'team-prod': {
+          provider: 'ai-run-sso',
+          codeMieUrl: 'https://prod.example.com',
+          codeMieProject: 'team-proj',
+          codeMieIntegration: 'team-int' as unknown as CodeMieIntegrationInfo,
+          baseUrl: 'https://prod.example.com/code-assistant-api',
+          model: 'claude-sonnet-4-6',
+          name: 'team-prod'
+        }
+      });
+
+      const cfg = await ConfigLoader.load(path.join(TEST_DIR, 'project'), { name: 'personal-anthropic' });
+
+      expect(cfg.codeMieUrl).toBe('https://prod.example.com');
+      expect(cfg.codeMieProject).toBe('personal-proj');
+      expect(cfg.codeMieIntegration).toBe('personal-int');
     });
 
     it('preserves local codeMieProject when local profile has no codeMieUrl', async () => {
